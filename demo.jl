@@ -1,80 +1,112 @@
 using PortMidi
 include("utils.jl")
-
 Pm_Initialize()
+stream = OpenOutput("loopMIDI Port")
 
-for i in 0:Pm_CountDevices()-1
-    info = unsafe_load(Pm_GetDeviceInfo(i))
-    println(i, ": ", info.output > 0 ? "[Output ] " : "[Input] ", unsafe_string(info.name), " (", unsafe_string(info.interf), ")")
+const A3 = 57
+const C4 = 60
+
+# time keeping
+metro = Metronome(bpm = 120.0)
+
+# basic math function
+Base.cos(metro, t, period) = cos(2pi * t / bps(metro) / period)
+
+root = Ref(C4)
+root[] = 52
+
+# lefthand(stream, metro, root, i) = nothing 
+function lefthand(stream, metro, root, i)
+    if i % 8 == 0 
+        root[] = rand(setdiff([48,50,52],root[]))
+    end
+
+    notes = 52 .+ (3,3,5,7,3,3,-5,-9)
+    dur = 1/2
+    
+    @async play_note(stream, metro, notes[mod(i,eachindex(notes))], rand(60:90), dur)
+    sleep(until(metro, dur))
+    
+    @async play_note(stream, metro, root[]-12, rand(50:80), dur)
+    sleep(until(metro, dur))
+    Base.@invokelatest lefthand(stream, metro, root, i + 1)
 end
 
-id = 3
+@masync metro lefthand(stream, metro, root, 1)
 
-# 2. Open device 
-const stream = OpenOutput("") Ref{Ptr{PortMidi.PortMidiStream}}(C_NULL)
-Pm_OpenOutput(stream, id, C_NULL, 0, C_NULL, C_NULL, 0)
-# don't forget to call later: Pm_Close(stream[])
+aeolian = (0,2,3,5,7,8,10)
 
-# 3. Send MIDI messages 
-Note_ON = 0x90
-Note_OFF = 0x80
-C4 = 60
+# righthand(stream, metro, root) = nothing
+function righthand(stream, metro, root) 
+    dur = 1/2
 
-function play_note(stream, note, velocity, duration,chn = 1)
-    @assert 0 < chn <= 16
-    Pm_WriteShort(stream[], 0, Pm_Message(0x90 + chn - 1, note, velocity))
-    sleep(duration)
-    Pm_WriteShort(stream[], 0, Pm_Message(0x80 + chn - 1, note, velocity))
+    t = time() 
+
+    note = root[] + 12 + 5 + 3 * cos(metro,  t, 7/3) + rand(-1:1)
+    note = quantize(C4, (0,2,4,5,7), note)
+
+    vel = 80 + 20 * cos(metro, t, 3/7)
+
+    @async play_note(stream, metro, note, vel, dur, 2) 
+    sleep(until(metro, dur))
+
+    # @show vel
+    
+    Base.@invokelatest righthand(stream, metro, root)
 end
+# righthand(stream, metro, root) = nothing
+
+@masync metro righthand(stream, metro, root)
+
+# kick(stream, metro) = nothing
+function kick(stream, metro)
+    dur = 1/4   
+    @async play_note(stream, metro, 40-4, 100, dur, 3)
+    sleep(until(metro, 2*dur))
+    Base.@invokelatest kick(stream, metro)
+end
+
+@masync metro kick(stream, metro)
+
+# hat(stream, metro) = nothing
+function hat(stream, metro)
+    dur = 1/4
+    sleep(until(metro, dur))
+    @async play_note(stream, metro, 40-2, 100, dur, 3)
+    sleep(until(metro, dur))
+    Base.@invokelatest hat(stream, metro)
+end
+
+@masync metro hat(stream, metro)
+
+# chords(stream, metro, root) = nothing
+function chords(stream, metro, root)
+    dur = 4.0 
+    @async play_note(stream, metro, root[] + 24 + rand([0,-12]), 120, dur, 4)
+    @async play_note(stream, metro, root[] + 12 + 7, 120, dur, 4)
+    
+    sleep(until(metro, dur))
+    Base.@invokelatest chords(stream, metro, root)
+end
+
+@masync metro chords(stream, metro, root)
 
 # @async play_note(stream, C4 + rand([-5,-2,0,2,5]), rand(80:120), 1.0 + 0.05*rand(), 1)
 
-# # make a random tune...
-# for i in 1:12
-#     @async play_note(stream, C4 + rand([-5,-2,0,2,5]), rand(80:120), 0.15 + 0.05*rand())
-#     sleep(0.15)
-#     @async play_note(stream, C4, rand(80:120), 0.15 + 0.05*rand())
-#     sleep(0.3 + 0.05*rand())
+
+# function rep(stream, root)
+#     dur = 0.19 + 0.005*randn()
+#     @async play_note(stream, root[] + rand([-7,-5,0,3,5,12]), rand(60:70), dur + 0.05*rand())
+#     sleep(dur)
+#     @async play_note(stream, root[] + rand([-12,12]), rand(50:90), dur + 0.05*rand())
+#     sleep(dur)
+#     Base.invokelatest(rep, stream, root)
 # end
 
-function rep(stream, root)
-    dur = 0.19 + 0.005*randn()
-    @async play_note(stream, root[] + rand([-7,-5,0,3,5,12]), rand(60:70), dur + 0.05*rand())
-    sleep(dur)
-    @async play_note(stream, root[] + rand([-12,12]), rand(50:90), dur + 0.05*rand())
-    sleep(dur)
-    Base.invokelatest(rep, stream, root)
-end
+# root = Ref(C4)
 
-root = Ref(C4)
-
-rep(stream, C4) = nothing
-@async rep(stream, root)
-
-
-play_note(stream, 48, 70, 1.0, 1)
-
-
-@async play_note(stream, C4 - 12 * 2, rand(80:120), 1.0 + 0.05*rand())
-
-macro pa(note, vel, dur)
-    return :(@async play_note(stream, $note, $vel, $dur) )
-end
-
-time()
-
-
-beat = 120.0
-
-function rep(t = now())
-    sleep(max(0.0, t - time())) # wait until the function should start
-
-    @pa C4 120 1.0
-
-    Base.invokelatest(rep, t + 1.0)
-end
-
-rep(1.0)
+# rep(stream, C4) = nothing
+# @async rep(stream, root)
 
 
 
