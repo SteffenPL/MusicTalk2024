@@ -10,7 +10,7 @@ const C4 = 60
 metro = Metronome(bpm = 120.0)
 
 # basic math function
-Base.cos(metro, t, period) = cos(2pi * t / bps(metro) / period)
+Base.cos(metro, t, period = 1.0) = cos(2pi * t / bps(metro) / period)
 
 root = Ref(C4)
 root[] = 52
@@ -21,29 +21,30 @@ function lefthand(stream, metro, root, i)
         root[] = rand(setdiff([48,50,52],root[]))
     end
 
-    notes = 52 .+ (3,3,5,7,3,3,-5,-9)
+    notes = 52 .+ (3,3,5,7)
     dur = 1/2
     
     @async play_note(stream, metro, notes[mod(i,eachindex(notes))], rand(60:90), dur)
     sleep(until(metro, dur))
     
-    @async play_note(stream, metro, root[]-12, rand(50:80), dur)
+    @async play_note(stream, metro, root[], rand(50:80), dur)
     sleep(until(metro, dur))
     Base.@invokelatest lefthand(stream, metro, root, i + 1)
 end
 
 @masync metro lefthand(stream, metro, root, 1)
 
-aeolian = (0,2,3,5,7,8,10)
+aeolian = (0,2,3,5,7,8,9,12)
+major   = (0,2,4,5,7,9,11,12)
 
 # righthand(stream, metro, root) = nothing
 function righthand(stream, metro, root) 
-    dur = 1/2
+    dur = 1/4 #  rand([1/2, 1/4, 1/2, 1/2, 1/2])
 
     t = time() 
 
-    note = root[] + 12 + 5 + 3 * cos(metro,  t, 7/3) + rand(-1:1)
-    note = quantize(C4, (0,2,4,5,7), note)
+    note = 52 + 12 + (12 + 3 * cos(metro, t, 3/7)) * cos(metro, t, 2)
+    note = quantize(60, major, note)
 
     vel = 80 + 20 * cos(metro, t, 3/7)
 
@@ -60,8 +61,8 @@ end
 
 # kick(stream, metro) = nothing
 function kick(stream, metro)
-    dur = 1/4   
-    @async play_note(stream, metro, 40-4, 100, dur, 3)
+    dur = rand([1/4,1/8])   
+    @async play_note(stream, metro, 40-2, 100, dur, 3)
     sleep(until(metro, 2*dur))
     Base.@invokelatest kick(stream, metro)
 end
@@ -70,7 +71,7 @@ end
 
 # hat(stream, metro) = nothing
 function hat(stream, metro)
-    dur = 1/4
+    dur = 1/2
     sleep(until(metro, dur))
     @async play_note(stream, metro, 40-2, 100, dur, 3)
     sleep(until(metro, dur))
@@ -82,8 +83,8 @@ end
 # chords(stream, metro, root) = nothing
 function chords(stream, metro, root)
     dur = 4.0 
-    @async play_note(stream, metro, root[] + 24 + rand([0,-12]), 120, dur, 4)
-    @async play_note(stream, metro, root[] + 12 + 7, 120, dur, 4)
+    @async play_note(stream, metro, root[] + rand([0,-12]), 120, dur, 4)
+    @async play_note(stream, metro, root[] + 7, 120, dur, 4)
     
     sleep(until(metro, dur))
     Base.@invokelatest chords(stream, metro, root)
