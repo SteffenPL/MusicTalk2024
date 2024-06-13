@@ -2,6 +2,7 @@ using PortMidi
 import Base.unsafe_convert
 using Base.Iterators: cycle
 using Base: @invokelatest
+using Random: shuffle, shuffle!
 
 function OpenOutput(name)
     stream = Ref{Ptr{PortMidi.PortMidiStream}}(C_NULL)
@@ -42,7 +43,8 @@ beat(metro) = (time() - metro.last_beat[]) * bps(metro)
 function until(metro, step, minstep = 1)
     cur = beat(metro) 
     next = ceil( cur / step ) * step
-    return max(next * spb(metro) - time(), step * minstep * spb(metro), 0)
+    dur = next * spb(metro) + metro.last_beat[] - time()
+    return dur > 0 ? dur : step * minstep * spb(metro)
 end 
 
 macro masync(metro, expr)
@@ -71,14 +73,14 @@ function notename(note)
     return ("C","C♯","D","D♯","E","F","F♯","G","G♯","A","A♯","H")[1+offset] * string(oct-2)
 end
 
-function playnote(stream, note::Int, velocity, duration, chn = 1)
+function playnote_(stream, note::Int, velocity, duration, chn = 1)
     Pm_WriteShort(stream[], 0, Pm_Message(0x90 + chn - 1, note, round(Int, velocity)))
     sleep(duration)
     Pm_WriteShort(stream[], 0, Pm_Message(0x80 + chn - 1, note, round(Int, velocity)))
     return note
 end
 
-playnote(instr::NamedTuple, note::Int, vel, dur) = @async playnote(instr.stream,note,vel,dur*spb(instr.metro),instr.chn)
+playnote(instr::NamedTuple, note::Int, vel, dur) = @async playnote_(instr.stream,note,vel,dur*spb(instr.metro),instr.chn)
 
 function playnotes(instr, chord, vels, durs)
     for (note, vel, dur) in zip(chord, cycle(vels), cycle(durs))
