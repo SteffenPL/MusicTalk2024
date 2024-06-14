@@ -60,13 +60,15 @@ end
 const Note_ON = 0x90
 const Note_OFF = 0x80
 
-
+const scale_major = (0,2,4,5,7,9,11,12)
 
 function quantize(root, steps, note) 
     oct, offset = divrem(note - root, 12, RoundDown) 
     i = findfirst(n -> n >= offset, steps)
     return root + Int(oct)*12 + steps[i]
 end
+
+quantize(root, steps, notes::Vector) = map( note -> quantize(root,steps,note), notes)
 
 function notename(note)
     oct, offset = divrem(note, 12, RoundDown)
