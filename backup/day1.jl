@@ -24,12 +24,13 @@ for i in 1:50
 end 
 
 function repeat(fnc)
-    cont, arg = fnc()
+    cont, total, arg = jazzi()
     running = Ref(true)
     @async while cont && running[]
-        try
-            cont, new_arg = @invokelatest fnc(arg...)
+        @time try
+            cont, total, new_arg = @invokelatest jazzi(total, arg...)
             arg = new_arg
+
         catch err 
             showerror(stdout, err, catch_backtrace())
             running[] = false
@@ -63,42 +64,26 @@ function part(i = 1, offset = 0, instr = piano)
     return true, i+1, offset
 end
 
-function jazzi(i = 1, melo = [60, 65, 67, 69, 65, 64, 65, 69], root = 0, piano = piano, drum = drum)
-    if i % 1 == 0 
-        melo[rand(eachindex(melo))] = rand(setdiff([55, 55, 57, 59, 60, 62, 64, 64, 65, 67, 69, 72], melo))  
-        @show melo, root
-    end
-
-    if i % 2 == 0
-        a = rand(eachindex(melo))
-        b = rand(eachindex(melo))
-        a, b = minmax(a,b)
-        melo[a:b] .= sort(melo[a:b]; rev = rand(Bool))
-    end
-
-    if i % 2 == 0 
-        root = rand([-5,-3,-12,-15,-24,0,4,9])
-    end
-
-    if i % 8 == 0 
-        shuffle!(melo)
-    end
+function jazzi(next = time(), i = 1, melo = [60, 65, 67, 69, 65, 64, 65, 69], root = 0, piano = piano, drum = drum)
     
-    @sync begin 
+    @show dur = next - time()
+    sleep(max(0.0, dur))
+    begin 
         rythm = 0.5 .* shuffle([0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5])
         drums = [36, 38, rand([36,38,39,40]), 38]
-        @async playmelody(piano, quantize(60, scale_major, root .+ melo), rythm, 20 .+ 60 .* rand(4), 0.5 .+ 0.2 * rand(4))
-        @async playmelody(drum, vcat(drums, shuffle(drums)), rythm, 40 .+ 60 .* rand(4), 0.3)
+        # @async playmelody(piano, quantize(60, scale_major, root .+ melo), rythm, 20 .+ 60 .* rand(4), 0.5 .+ 0.2 * rand(4))
+        # @async playmelody(drum, vcat(drums, shuffle(drums)), rythm, 40 .+ 60 .* rand(4), 0.3)
         @async begin 
-            sleep(0.125 * spb(metro))
-            playmelody(piano, fill(60 + root, 7), 0.25, 60 .+ 20 .* rand(7), 0.12)
+            playmelody(piano, fill(60, 8), 0.25, [120, 60, 60, 60, 60, 60, 60, 60], 0.05)
         end
-        @async begin 
-            playnotes(piano, quantize(60, scale_major, 48 .+ [0, 4, 9] .+ root), 60 .+ 30 .* rand(3), 1.9)
-        end
+        # @async begin 
+        #     playnotes(piano, quantize(60, scale_major, 48 .+ [0, 4, 9] .+ root), 60 .+ 30 .* rand(3), 1.9)
+        # end
     end
 
-    return true, (i+1, melo, root)
+    next = time() + until(metro, 2.0)
+
+    return true, next, (i+1, melo, root)
 end
 
 A = mrepeat(metro, jazzi)
